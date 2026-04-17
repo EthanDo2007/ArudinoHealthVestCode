@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ESP32 Health Monitor</title>
+  <style>
+    :root {
+      --bg: #f4efe7;
+      --panel: rgba(255, 252, 247, 0.82);
+      --panel-border: rgba(94, 72, 52, 0.16);
+      --text: #2d241d;
+      --muted: #6f6257;
+      --accent: #c65d2e;
+      --accent-2: #2f7d6b;
+      --good: #2d8a56;
+      --warn: #c78b1e;
+      --bad: #c74646;
+      --shadow: 0 18px 40px rgba(66, 40, 20, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Georgia, "Times New Roman", serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(198, 93, 46, 0.20), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(47, 125, 107, 0.18), transparent 32%),
+        linear-gradient(135deg, #f7f1e8 0%, #efe3d1 100%);
+    }
+
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 20px 48px;
+    }
+
+    .hero {
+      margin-bottom: 24px;
+    }
+
+    .eyebrow {
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-size: 0.78rem;
+      color: var(--accent-2);
+      margin-bottom: 8px;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(2rem, 4vw, 3.8rem);
+      line-height: 0.95;
+    }
+
+    .sub {
+      margin: 0;
+      max-width: 720px;
+      color: var(--muted);
+      font-size: 1.05rem;
+    }
+
+    .controls,
+    .grid,
+    .map-card {
+      background: var(--panel);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--panel-border);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+    }
+
+    .controls {
+      padding: 18px;
+      margin: 24px 0;
+      display: grid;
+      gap: 14px;
+      grid-template-columns: 1fr auto auto;
+      align-items: end;
+    }
+
+    .field label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
+
+    .field input {
+      width: 100%;
+      padding: 14px 16px;
+      border: 1px solid #d8c7b8;
+      border-radius: 14px;
+      font-size: 1rem;
+      background: #fffdf9;
+      color: var(--text);
+    }
+
+    button {
+      border: 0;
+      border-radius: 14px;
+      padding: 14px 18px;
+      font-size: 0.98rem;
+      cursor: pointer;
+      transition: transform 0.15s ease, opacity 0.15s ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+    }
+
+    .primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .secondary {
+      background: #e8ddd0;
+      color: var(--text);
+    }
+
+    .status {
+      margin: 0 0 20px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.6);
+      color: var(--muted);
+      border: 1px solid rgba(94, 72, 52, 0.12);
+    }
+
+    .grid {
+      padding: 18px;
+      display: grid;
+      gap: 18px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+
+    .card {
+      background: rgba(255,255,255,0.72);
+      border: 1px solid rgba(94, 72, 52, 0.10);
+      border-radius: 18px;
+      padding: 18px;
+    }
+
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 1rem;
+      color: var(--muted);
+      font-weight: normal;
+    }
+
+    .value {
+      font-size: clamp(2rem, 4vw, 3.1rem);
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .pill {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      background: #efe4d9;
+      color: var(--text);
+    }
+
+    .good { color: var(--good); }
+    .warn { color: var(--warn); }
+    .bad { color: var(--bad); }
+
+    .map-card {
+      margin-top: 20px;
+      padding: 18px;
+    }
+
+    .map-link {
+      display: inline-block;
+      margin-top: 10px;
+      color: var(--accent-2);
+      text-decoration: none;
+      font-weight: bold;
+    }
+
+    .updated {
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    @media (max-width: 720px) {
+      .controls {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <div class="eyebrow">Live Device Dashboard</div>
+      <h1>ESP32 Health Monitor</h1>
+      <p class="sub">This page polls your ESP32 web server and shows heart rate, temperature, and GPS location in real time.</p>
+    </section>
+
+    <section class="controls">
+      <div class="field">
+        <label for="apiUrl">ESP32 Data URL</label>
+        <input id="apiUrl" type="text" value="http://ESP32_IP/data" />
+      </div>
+      <button id="saveBtn" class="primary">Connect</button>
+      <button id="refreshBtn" class="secondary">Refresh Now</button>
+    </section>
+
+    <div id="status" class="status">Waiting to connect...</div>
+
+    <section class="grid">
+      <article class="card">
+        <h2>Heart Rate</h2>
+        <div id="bpm" class="value">--</div>
+        <div class="meta">beats per minute</div>
+        <div id="bpmState" class="pill">No reading yet</div>
+      </article>
+
+      <article class="card">
+        <h2>Temperature</h2>
+        <div id="tempF" class="value">--</div>
+        <div id="tempMeta" class="meta">Fahrenheit / Celsius</div>
+        <div id="tempState" class="pill">No reading yet</div>
+      </article>
+
+      <article class="card">
+        <h2>GPS Latitude</h2>
+        <div id="lat" class="value">--</div>
+        <div class="meta">north / south position</div>
+      </article>
+
+      <article class="card">
+        <h2>GPS Longitude</h2>
+        <div id="lng" class="value">--</div>
+        <div class="meta">east / west position</div>
+      </article>
+    </section>
+
+    <section class="map-card">
+      <h2>Location</h2>
+      <div id="mapText" class="meta">No GPS fix yet.</div>
+      <a id="mapLink" class="map-link" href="#" target="_blank" rel="noreferrer" style="display:none;">Open in Google Maps</a>
+      <div id="updated" class="updated">Last update: never</div>
+    </section>
+  </div>
+
+  <script>
+    const apiUrlInput = document.getElementById("apiUrl");
+    const saveBtn = document.getElementById("saveBtn");
+    const refreshBtn = document.getElementById("refreshBtn");
+    const statusEl = document.getElementById("status");
+    const bpmEl = document.getElementById("bpm");
+    const bpmStateEl = document.getElementById("bpmState");
+    const tempFEl = document.getElementById("tempF");
+    const tempMetaEl = document.getElementById("tempMeta");
+    const tempStateEl = document.getElementById("tempState");
+    const latEl = document.getElementById("lat");
+    const lngEl = document.getElementById("lng");
+    const mapTextEl = document.getElementById("mapText");
+    const mapLinkEl = document.getElementById("mapLink");
+    const updatedEl = document.getElementById("updated");
+
+    const STORAGE_KEY = "esp32-health-monitor-url";
+    let pollTimer = null;
+
+    function heartClass(bpm) {
+      if (bpm < 60) return "warn";
+      if (bpm <= 100) return "good";
+      return "bad";
+    }
+
+    function heartLabel(bpm) {
+      if (bpm < 60) return "Low heart rate";
+      if (bpm <= 100) return "Normal range";
+      return "Elevated heart rate";
+    }
+
+    function tempLabel(tempF) {
+      if (tempF < 95) return "Low temperature";
+      if (tempF <= 100.4) return "Normal range";
+      return "High temperature";
+    }
+
+    function setStatus(message, isError = false) {
+      statusEl.textContent = message;
+      statusEl.style.color = isError ? "var(--bad)" : "var(--muted)";
+      statusEl.style.borderColor = isError ? "rgba(199,70,70,0.25)" : "rgba(94,72,52,0.12)";
+    }
+
+    function updateUI(data) {
+      const bpm = Number(data.bpm || 0);
+      const tempF = Number(data.tempF || 0);
+      const tempC = Number(data.tempC || 0);
+      const lat = Number(data.lat || 0);
+      const lng = Number(data.lng || 0);
+
+      bpmEl.textContent = bpm > 0 ? Math.round(bpm) : "--";
+      bpmEl.className = "value " + (bpm > 0 ? heartClass(bpm) : "");
+      bpmStateEl.textContent = bpm > 0 ? heartLabel(bpm) : "No reading yet";
+
+      if (data.tempValid) {
+        tempFEl.textContent = `${tempF.toFixed(1)}°F`;
+        tempMetaEl.textContent = `${tempC.toFixed(1)}°C`;
+        tempStateEl.textContent = tempLabel(tempF);
+      } else {
+        tempFEl.textContent = "--";
+        tempMetaEl.textContent = "Fahrenheit / Celsius";
+        tempStateEl.textContent = "No reading yet";
+      }
+
+      if (data.gpsValid) {
+        latEl.textContent = lat.toFixed(4);
+        lngEl.textContent = lng.toFixed(4);
+        mapTextEl.textContent = `Lat ${lat.toFixed(4)}, Lng ${lng.toFixed(4)}`;
+        mapLinkEl.href = `https://www.google.com/maps?q=${lat},${lng}`;
+        mapLinkEl.style.display = "inline-block";
+      } else {
+        latEl.textContent = "--";
+        lngEl.textContent = "--";
+        mapTextEl.textContent = "No GPS fix yet.";
+        mapLinkEl.style.display = "none";
+      }
+
+      updatedEl.textContent = `Last update: ${new Date().toLocaleTimeString()}`;
+      setStatus("Connected. Live data is updating.");
+    }
+
+    async function fetchData() {
+      const url = apiUrlInput.value.trim();
+      if (!url) {
+        setStatus("Enter your ESP32 /data URL first.", true);
+        return;
+      }
+
+      try {
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        updateUI(data);
+      } catch (error) {
+        setStatus(`Could not load data from ESP32: ${error.message}`, true);
+      }
+    }
+
+    function startPolling() {
+      if (pollTimer) clearInterval(pollTimer);
+      localStorage.setItem(STORAGE_KEY, apiUrlInput.value.trim());
+      fetchData();
+      pollTimer = setInterval(fetchData, 3000);
+    }
+
+    saveBtn.addEventListener("click", startPolling);
+    refreshBtn.addEventListener("click", fetchData);
+
+    const savedUrl = localStorage.getItem(STORAGE_KEY);
+    if (savedUrl) {
+      apiUrlInput.value = savedUrl;
+    }
+
+    if (apiUrlInput.value.includes("/data")) {
+      startPolling();
+    }
+  </script>
+</body>
+</html>
