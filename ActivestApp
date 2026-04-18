@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ESP32 Dashboard</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f5f5f5; }
+    .cards { display: flex; gap: 16px; margin-bottom: 20px; }
+    .card { background: white; border-radius: 10px; padding: 20px; flex: 1; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+    .card h3 { font-size: 13px; color: #888; margin: 0 0 6px; }
+    .card .val { font-size: 36px; font-weight: 600; }
+    #map { height: 350px; border-radius: 10px; margin-bottom: 20px; }
+    canvas { background: white; border-radius: 10px; padding: 16px; }
+  </style>
+</head>
+<body>
+  <div class="cards">
+    <div class="card"><h3>Temperature</h3><div class="val" id="temp">--°C</div></div>
+    <div class="card"><h3>Humidity</h3><div class="val" id="humidity">--%</div></div>
+    <div class="card"><h3>Heart Rate</h3><div class="val" id="hr" style="color:#ef4444">-- bpm</div></div>
+  </div>
+
+  <div id="map"></div>
+  <canvas id="hrChart"></canvas>
+
+<script>
+  // --- Map setup ---
+  const map = L.map('map').setView([0, 0], 15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+  const trail = L.polyline([], { color: '#3b82f6', weight: 3 }).addTo(map);
+  const marker = L.circleMarker([0,0], { radius: 8, color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 1 }).addTo(map);
+
+  // --- Heart rate chart ---
+  const hrData = Array(30).fill(null);
+  const hrChart = new Chart(document.getElementById('hrChart'), {
+    type: 'line',
+    data: {
+      labels: hrData.map((_,i) => i),
+      datasets: [{ label: 'BPM', data: hrData, borderColor: '#ef4444', tension: 0.3, pointRadius: 0 }]
+    },
+    options: { animation: false, scales: { y: { min: 40, max: 160 } } }
+  });
+
+  // --- WebSocket from ESP32 ---
+  const ws = new WebSocket('ws://192.168.1.42/ws'); // <-- change to your ESP32's IP
+
+  ws.onmessage = (event) => {
+    const d = JSON.parse(event.data);
+
+    document.getElementById('temp').textContent = d.temp.toFixed(1) + '°C';
+    document.getElementById('humidity').textContent = d.humidity.toFixed(0) + '%';
+    document.getElementById('hr').textContent = d.hr.toFixed(0) + ' bpm';
+
+    if (d.lat && d.lng) {
+      const pos = [d.lat, d.lng];
+      marker.setLatLng(pos);
+      trail.addLatLng(pos);
+      map.panTo(pos);
+    }
+
+    hrData.shift();
+    hrData.push(d.hr);
+    hrChart.data.datasets[0].data = hrData;
+    hrChart.update();
+  };
+</script>
+</body>
+</html>
